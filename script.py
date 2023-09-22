@@ -1,9 +1,12 @@
-# import xml.etree.ElementTree as ET
+# import xml.etree.ElementTree as ET - discarded etree due to how it handles CDATA values
 import xml.dom.minidom as minidom
 
 # Variables related to file handling
 input_file = "config.xml"
 output_file = "new_config.xml"
+
+# Variables related to interfaces
+target_interface = "wan"
 
 # Read XML content from the input file
 with open(input_file, "r") as file:
@@ -11,41 +14,32 @@ with open(input_file, "r") as file:
 
 doc = minidom.parseString(xml_content)
 
-# Function to get the value of an element by tag name and index
 def get_element_value(element, tag_name, index=0):
+    # Function to get the value of an element by tag name and index
     elements = element.getElementsByTagName(tag_name)
     if elements:
         return elements[index].firstChild.nodeValue
     return None
 
-# Function to modify the value of an element by tag name and index
+
 def modify_element_value(element, tag_name, new_value, index=0):
+    # Function to modify the value of an element by tag name and index
     elements = element.getElementsByTagName(tag_name)
     if elements:
         elements[index].firstChild.nodeValue = new_value
 
-# Extracting hostname and domain values out of the system tree
-#system_elements = doc.getElementsByTagName("system")
-#for element in system_elements:
-#    hostname = get_element_value(element, "hostname")
-#    domain = get_element_value(element, "domain")
 
-# Extracting defined interface network elements such as IP address and gateway for both IPv4 and IPv6
-target_interface = "wan"
-
-
-# Commit changes - Write the serialized XML to an external file
 def saveFile():
+    # Function to commit changes - Write the serialized XML to an external file
     modified_xml = doc.toprettyxml(indent="", newl="")
+    # Adjust output file formatting so it looks similar to the original
     modified_xml_with_line_break = modified_xml.replace('<pfsense>', '\n<pfsense>', 1)
     with open(output_file, "w") as file:
         file.write(modified_xml_with_line_break)
 
 
-
 def showIp():
-
-# Find the value of ipaddr, ipaddrv6, subnet and subnetv6 inside of interfaces tree
+    # Find the value of ipaddr, ipaddrv6, subnet and subnetv6 inside of interfaces tree
     interfaces_elements = doc.getElementsByTagName("interfaces")
     for interfaces_element in interfaces_elements:
         wan_elements = interfaces_element.getElementsByTagName(target_interface)
@@ -55,7 +49,7 @@ def showIp():
             wan_subnet_v4 = get_element_value(wan_element, "subnet")
             wan_subnet_v6 = get_element_value(wan_element, "subnetv6")
 
-# Find the value of gateway where ipprotocol and interface are defined
+    # Find the value of gateway where ipprotocol and interface are defined
     gateway_items = doc.getElementsByTagName("gateway_item")
     for gateway_item in gateway_items:
         interface = gateway_item.getElementsByTagName("interface")[0].firstChild.nodeValue
@@ -76,10 +70,12 @@ def showIp():
     else:
             print("No IPv6 found for {}.".format(target_interface))
 
+    # Passing variable so it can be used in the changeIp function
     changeIp(interfaces_elements)
 
 
 def changeIp(interfaces_elements):
+    # Function to change the value of WAN interface IPv4 and IPv6
     if input("\nDo you want to change the IPv4 for the WAN interface (y/n)? ") == 'y':
             wan_ipaddress_v4 = input("Please enter a new IPv4: ")
             wan_subnet_v4 = input("Please enter a v4 subnet mask: ")
@@ -105,11 +101,13 @@ def changeIp(interfaces_elements):
 
     else:
             print("bye")
+    
     # Passing variable so we can use it as routerid in FRR package
     disablePackageFrr(wan_ipaddress_v4)
 
-def showInterfaces():
 
+def showInterfaces():
+    # Asking if interfaces should be cleaned, so relevant functions can be called
     if input("\nWould you like to delete all available interfaces except for WAN? This will delete relevant firewall rules, gateways, and NAT outbound rules (y/n): ") == 'y':
         cleanInterfaces()
         cleanGateways()
@@ -121,9 +119,7 @@ def showInterfaces():
 
 def showHostname():
     print("== FQDN ==")
-#	hostname_element = root.find("system/hostname")
-#	domain_element = root.find("system/domain")
-# Extracting hostname and domain values out of the system tree
+    # Extracting hostname and domain values out of the system tree
     system_elements = doc.getElementsByTagName("system")
     for element in system_elements:
         hostname = get_element_value(element, "hostname")
@@ -142,6 +138,7 @@ def showTunnels():
     # Initial amount of tunnels
     tunnels_number = 0
 
+    # Accessing the WireGuard tunnels element
     installedpackages_elements = doc.getElementsByTagName("installedpackages")
     for installedpackages_element in installedpackages_elements:
         wireguard_elements = installedpackages_element.getElementsByTagName("wireguard")
@@ -157,12 +154,14 @@ def showTunnels():
     print("Tunnels: {}". format(tunnels_number))
 
     if input("Would you like to delete all WireGuard tunnels? (y/n): ") == 'y':
+        # Passing variable so it can be used by cleanTunnels function
         cleanTunnels(installedpackages_elements)
     else:
         print("bye")
 
 
 def cleanTunnels(installedpackages_elements):
+    # This function deletes all WireGuard tunnels and peers
     installedpackages_elements = doc.getElementsByTagName("installedpackages")
     for installedpackages_element in installedpackages_elements:
         wireguard_elements = installedpackages_element.getElementsByTagName("wireguard")
@@ -185,12 +184,15 @@ def cleanTunnels(installedpackages_elements):
 
 
 def changeHostname(system_elements, hostname, domain):
+    # This function allows us to change the hostname of the pfSense installation, and it will also change the relevant value in ACME for issuing the correct SSL cert
+    # Please note this will not issue an SSL cert - we still need to go to the GUI and press the Issue/Renew button for the first time
     new_hostname = input("\nEnter new hostname: ")
 
     for system_element in system_elements:
         modify_element_value(system_element, "hostname", new_hostname)
     print("Changing hostname... OK")
 
+    # Accessing the ACME element so the hostname is changed
     installedpackages_elements = doc.getElementsByTagName("installedpackages")
     for installedpackages_element in installedpackages_elements:
         acme_elements = installedpackages_element.getElementsByTagName("acme")
@@ -215,6 +217,7 @@ def changeHostname(system_elements, hostname, domain):
         
 
 def showVirtualIps():
+    # This funtion shows all virtual IPs which are configured in this pfSense installation
     print("\n== Virtual IPs ==")
     virtualip_elements = doc.getElementsByTagName("virtualip")
     for virtualip_element in virtualip_elements:
@@ -224,13 +227,15 @@ def showVirtualIps():
             print(vip)
 
     if input("Would you like to delete all Virtual IPs? (y/n): ") == 'y':
+        # Passing variable so it can be used by cleanVirtualIps function
         cleanVirtualIps(vip_elements)
     else:
         print("bye")
 
 
 def cleanInterfaces(): 
-
+# This function will delete all interfaces except for WAN
+    
 # Find the <virtualip> element
     interfaces_element = doc.getElementsByTagName("interfaces")[0]
 
@@ -246,7 +251,7 @@ def cleanInterfaces():
 
 
 def cleanVirtualIps(vip_elements):
-
+    # This function deletes all virtual IPs 
     for vip_element in vip_elements:
         parent = vip_element.parentNode
         parent.removeChild(vip_element)
@@ -256,9 +261,10 @@ def cleanVirtualIps(vip_elements):
 
 
 def cleanGateways():
+    # This function retrieves the value of IPv4 and IPv6 gateways for WAN, and allows the user to modify both gateways. It will also delete all non-WAN gateways.
     print("\n== Gateways ==")
 
-# Find the value of gateway where ipprotocol and interface are defined
+    # Find the value of gateway where ipprotocol and interface are defined
     gateway_items = doc.getElementsByTagName("gateway_item")
     for gateway_item in gateway_items:
         interface = gateway_item.getElementsByTagName("interface")[0].firstChild.nodeValue
@@ -290,9 +296,10 @@ def cleanGateways():
                 modify_element_value(gateway_item, "gateway", wan_gateway_v6)
         print("Changing IPv6 Gateway... OK")
 
-def cleanFirewallRules():
 
-# Find the value of gateway where ipprotocol and interface are defined
+def cleanFirewallRules():
+# This function deletes all firewall rules in non-WAN interfaces
+    
     filter_items = doc.getElementsByTagName("filter")
     for filter_item in filter_items:
         rule_items = filter_item.getElementsByTagName("rule")
@@ -304,8 +311,9 @@ def cleanFirewallRules():
 
     print("Cleaning firewall rules... OK")
 
-def cleanNatOutbound():
 
+def cleanNatOutbound():
+    # This function will delete all NAT outbound rules except for the 127.0.0.0/8 and ::1/128 ones, which are added by default
     networks_to_keep = ["127.0.0.0/8", "::1/128"]
 
     nat_items = doc.getElementsByTagName("nat")
@@ -324,6 +332,7 @@ def cleanNatOutbound():
 
 
 def disablePackageFrr(arg):
+    # This function will disable FRR and BGP packages in order to prevent announcing prefixes from another pfSense installation. It also changes the router ID with the WAN IPv4 value
     print("\n== FRR Package ==")
 
     installedpackages_elements = doc.getElementsByTagName("installedpackages")
@@ -341,6 +350,7 @@ def disablePackageFrr(arg):
             print("Disabling frr... OK")
 
 
+# Init script
 showHostname()
 showIp()
 showInterfaces()
